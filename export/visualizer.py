@@ -206,6 +206,121 @@ class Visualizer:
         plt.close(fig)
         return saved_path
 
+    def plot_top_view_3d(
+        self,
+        floor_plan: FloorPlan,
+        ceiling_height: float = 2.8,
+        output_path: Optional[str] = None,
+        show: bool = False,
+        tilt: float = 65.0,
+    ) -> Optional[str]:
+        """
+        Top-down 3D floor plan: rooms as coloured floor polygons, walls extruded.
+
+        Args:
+            floor_plan:     Parsed floor plan model.
+            ceiling_height: Wall height in metres.
+            output_path:    Save path for the PNG.
+            show:           Whether to call plt.show().
+            tilt:           Elevation angle in degrees (90 = pure top-down,
+                            65-75 gives a slight 3-D feel while keeping rooms readable).
+        """
+        from mpl_toolkits.mplot3d import Axes3D          # noqa: F401
+        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+        from matplotlib.patches import Patch
+
+        fig = plt.figure(figsize=(14, 12))
+        ax = fig.add_subplot(111, projection="3d")
+        ax.set_title("Floor Plan — Top View (3D)", fontsize=14, fontweight="bold")
+        ax.set_xlabel("X (m)")
+        ax.set_ylabel("Y (m)")
+        ax.set_zlabel("Z (m)")
+
+        fw = floor_plan.width_m
+        fh = floor_plan.height_m
+
+        # ── Floor slab ──────────────────────────────────────────────────
+        floor_verts = [[(0, 0, 0), (fw, 0, 0), (fw, fh, 0), (0, fh, 0)]]
+        ax.add_collection3d(
+            Poly3DCollection(floor_verts, alpha=0.08,
+                             facecolor="#CCCCCC", edgecolor="#AAAAAA", linewidth=0.5)
+        )
+
+        # ── Room polygons on the floor plane ────────────────────────────
+        legend_handles = []
+        for idx, room in enumerate(floor_plan.rooms):
+            if len(room.polygon) < 3:
+                continue
+            color = self.ROOM_COLORS[idx % len(self.ROOM_COLORS)]
+            # Close the polygon
+            pts_3d = [(x, y, 0.01) for x, y in room.polygon]
+            ax.add_collection3d(
+                Poly3DCollection([pts_3d], alpha=0.55,
+                                 facecolor=color, edgecolor="none")
+            )
+            # Centroid label
+            cx = sum(p[0] for p in room.polygon) / len(room.polygon)
+            cy = sum(p[1] for p in room.polygon) / len(room.polygon)
+            ax.text(cx, cy, 0.05,
+                    f"{room.name}\n{room.area:.1f} m²",
+                    ha="center", va="center", fontsize=6.5,
+                    color="#111111",
+                    bbox=dict(boxstyle="round,pad=0.15", facecolor="white",
+                              alpha=0.7, edgecolor="none"))
+            legend_handles.append(Patch(facecolor=color, alpha=0.7, label=f"{room.name}"))
+
+        # ── Walls ────────────────────────────────────────────────────────
+        for wall in floor_plan.walls:
+            verts = self._wall_to_3d_verts(wall, ceiling_height)
+            if not verts:
+                continue
+            face_color = "#5A5A5A" if wall.is_exterior else "#888888"
+            edge_color = "#333333" if wall.is_exterior else "#555555"
+            lw = 0.4 if wall.is_exterior else 0.3
+            ax.add_collection3d(
+                Poly3DCollection(verts, alpha=0.90,
+                                 facecolor=face_color,
+                                 edgecolor=edge_color,
+                                 linewidth=lw)
+            )
+
+        # ── Ceiling plane (transparent) ──────────────────────────────────
+        ceil_verts = [[(0, 0, ceiling_height), (fw, 0, ceiling_height),
+                       (fw, fh, ceiling_height), (0, fh, ceiling_height)]]
+        ax.add_collection3d(
+            Poly3DCollection(ceil_verts, alpha=0.04,
+                             facecolor="#DDDDDD", edgecolor="#BBBBBB", linewidth=0.3)
+        )
+
+        # ── Axis limits & camera ─────────────────────────────────────────
+        ax.set_xlim(0, fw)
+        ax.set_ylim(0, fh)
+        ax.set_zlim(0, ceiling_height * 1.05)
+        ax.view_init(elev=tilt, azim=-80)
+
+        # Legend (rooms only, capped at 8 entries to avoid clutter)
+        if legend_handles:
+            ax.legend(handles=legend_handles[:8], loc="upper right",
+                      fontsize=7, framealpha=0.8)
+
+        plt.tight_layout()
+
+        saved_path = None
+        if output_path:
+            os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+            fig.savefig(output_path, dpi=150, bbox_inches="tight")
+            saved_path = os.path.abspath(output_path)
+            logger.info(f"Top-view 3D saved: {saved_path}")
+
+        if show:
+            try:
+                plt.show()
+            except Exception:
+                pass
+
+        plt.close(fig)
+        return saved_path
+
     @staticmethod
     def _wall_to_3d_verts(wall, ceiling_height: float):
         """
