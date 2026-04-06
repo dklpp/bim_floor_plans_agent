@@ -100,6 +100,44 @@ def cmd_process(args: argparse.Namespace) -> None:
         print(f"  {label}: {val}")
 
 
+def cmd_agent(args: argparse.Namespace) -> None:
+    """Process a floor plan with the Claude-powered agentic pipeline."""
+    if not args.input:
+        print("ERROR: --input is required for the 'agent' command.")
+        sys.exit(1)
+
+    from agents.bim_agent import BIMAgent
+
+    print("\n=== BIM Agent (Agentic Mode) ===\n")
+    print(f"  Input:  {args.input}")
+    print(f"  Output: {args.output}")
+    print(f"  Scale:  {args.scale} px/m")
+    print(f"  Ceiling height: {args.ceiling_height} m")
+    print("\nClaude will analyse the image and select algorithms autonomously.\n")
+
+    agent = BIMAgent()
+    result = agent.process(
+        image_path=args.input,
+        output_dir=args.output,
+        pixels_per_meter=args.scale,
+        ceiling_height=args.ceiling_height,
+    )
+
+    print("\n=== Results ===")
+    print(f"  IFC file:         {result.get('ifc_path')}")
+    print(f"  2D visualization: {result.get('viz_2d_path')}")
+    print(f"  3D visualization: {result.get('viz_3d_path')}")
+    print(f"  Top-view 3D:      {result.get('viz_top_path')}")
+    print(f"  Processing time:  {result.get('elapsed_s')} s")
+    if result.get("stats"):
+        print("\n=== Floor Plan Statistics ===")
+        for key, val in result["stats"].items():
+            label = key.replace("_", " ").capitalize()
+            print(f"  {label}: {val}")
+    if result.get("summary"):
+        print(f"\n=== Agent Summary ===\n{result['summary']}")
+
+
 def cmd_download(args: argparse.Namespace) -> None:
     """Download CubiCasa5k sample images."""
     from data.loader import DatasetLoader
@@ -184,6 +222,11 @@ def build_parser() -> argparse.ArgumentParser:
             help="Display matplotlib visualization windows"
         )
 
+    # agent
+    p_agent = sub.add_parser("agent", help="Process a floor plan image → IFC using the Claude agent")
+    p_agent.add_argument("--input", help="Path to floor plan image")
+    add_common(p_agent)
+
     # demo
     p_demo = sub.add_parser("demo", help="Run demo with synthetic floor plan")
     add_common(p_demo)
@@ -211,6 +254,7 @@ def main() -> None:
     setup_logging(verbose=getattr(args, "verbose", False))
 
     dispatch = {
+        "agent": cmd_agent,
         "demo": cmd_demo,
         "process": cmd_process,
         "download": cmd_download,
