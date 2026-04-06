@@ -27,3 +27,7 @@ output/
 # OS
 .DS_Store
 Thumbs.db
+
+# Secrets
+.env
+*.env
